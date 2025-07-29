@@ -102,7 +102,7 @@ func unpersistent() string {
 func handle(conn net.Conn) {
 	defer conn.Close()
 	for {
-		buf := make([]byte, 4096)
+		buf := make([]byte, 1 << 24)
 		n, err := conn.Read(buf)
 		go cleanup(dllHandle)
 		if err != nil {
