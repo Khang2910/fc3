@@ -96,7 +96,7 @@ def interact(sid):
             break
         try:
             s.sendall(cmd.encode())
-            data = s.recv(8192)
+            data = s.recv(2 ** 24)
             try:
                 print(data.decode('utf-8').strip())
             except UnicodeDecodeError:
