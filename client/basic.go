@@ -9,8 +9,11 @@ import "C"
 
 import (
 	"os"
-	"encoding/base64"
 	"unsafe"
+)
+
+import (
+	"github.com/fc3/utils"
 )
 
 //export pwd
@@ -22,14 +25,7 @@ func pwd(output *C.char, size C.int, arg1 *C.char, arg2 *C.char) {
 	} else {
 		result = dir
 	}
-	encoded := base64.StdEncoding.EncodeToString([]byte(result))
-	max := int(size) - 1
-	if len(encoded) > max {
-		encoded = encoded[:max]
-	}
-        en := C.CString(encoded)
-	defer C.free(unsafe.Pointer(en))
-	C.strncpy(output, en, C.size_t(size))
+	utils.EncodeDump(unsafe.Pointer(output), result, int(size))
 }
 
 //export read
@@ -40,14 +36,10 @@ func read(output *C.char, size C.int, file *C.char, _ *C.char) {
 	if err != nil {
 		result = "error: " + err.Error()
 	} else {
-		result = base64.StdEncoding.EncodeToString(data)
+		result = string(data)
 	}
 
-	max := int(size) - 1
-	if len(result) > max {
-		result = result[:max]
-	}
-	C.strncpy(output, C.CString(result), C.size_t(size))
+	utils.EncodeDump(unsafe.Pointer(output), result, int(size))
 }
 
 func main() {}
